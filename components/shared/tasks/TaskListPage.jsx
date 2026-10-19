@@ -1,4 +1,4 @@
-// components/shared/tasks/TasksListPage.jsx
+// components/shared/tasks/TaskListPage.jsx
 "use client";
 
 import Link from "next/link";
@@ -32,7 +32,8 @@ import { ConfirmDialog } from "@/components/shared/ui/ConfirmDialog";
 import { useTasks } from "@/hooks/useTasks";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
 import { useToast } from "@/contexts/ToastContext";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
+import { TASK_STATUS } from "@/lib/constants";
 import {
   ListChecks,
   MoreHorizontal,
@@ -98,9 +99,11 @@ export function TasksListPage({
 
   const canEdit = role === "owner" || role === "admin";
   const canDelete = role === "owner" || role === "admin";
+  const canChangeStatus = role === "member";
 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
 
   const onDeleteConfirmed = async () => {
     if (!deleteTarget) return;
@@ -116,6 +119,28 @@ export function TasksListPage({
       toast.error(err?.message || "Failed to delete task");
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const onStatusChange = async (task, newStatus) => {
+    if (newStatus === task.status) return;
+    setUpdatingId(task.id);
+    try {
+      await api.patch(
+        `/api/${role}/projects/${task.projectSlug}/tasks/${task.displayNumber}`,
+        { status: newStatus, _version: task.version }
+      );
+      toast.success(`Status changed to ${newStatus}`);
+      refresh();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "CONFLICT") {
+        toast.error("Task was updated by someone else");
+        refresh();
+      } else {
+        toast.error(err.message || "Failed to update status");
+      }
+    } finally {
+      setUpdatingId(null);
     }
   };
 
@@ -237,6 +262,7 @@ export function TasksListPage({
               <AnimatePresence initial={false}>
                 {tasks.map((t, i) => {
                   const taskHref = `/${role}/projects/${t.projectSlug}/tasks/${t.displayNumber}`;
+                  const editHref = `/${role}/projects/${t.projectSlug}/tasks/${t.displayNumber}/edit`;
                   return (
                     <motion.div
                       key={t.id}
@@ -284,8 +310,27 @@ export function TasksListPage({
                             </span>
                           </div>
                         )}
-                        <div className={`${COL.status} pointer-events-none`}>
-                          <StatusBadge status={t.status} />
+                        <div className={`${COL.status} relative z-20`}>
+                          {canChangeStatus ? (
+                            <Select
+                              value={t.status}
+                              onValueChange={(v) => onStatusChange(t, v)}
+                              disabled={updatingId === t.id}
+                            >
+                              <SelectTrigger className="h-8 w-[120px] text-xs font-medium border-0 bg-muted/50 shadow-none focus:ring-1">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={TASK_STATUS.TODO}>To Do</SelectItem>
+                                <SelectItem value={TASK_STATUS.IN_PROGRESS}>In Progress</SelectItem>
+                                <SelectItem value={TASK_STATUS.DONE}>Done</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <div className="pointer-events-none">
+                              <StatusBadge status={t.status} />
+                            </div>
+                          )}
                         </div>
                         <span
                           className={`${COL.due} text-sm text-muted-foreground whitespace-nowrap pointer-events-none`}
@@ -324,7 +369,7 @@ export function TasksListPage({
                                   <DropdownMenuSeparator />
                                   <DropdownMenuItem
                                     nativeButton={false}
-                                    render={<Link href={taskHref} />}
+                                    render={<Link href={editHref} />}
                                   >
                                     <Pencil className="w-4 h-4 mr-2" />
                                     Edit task
@@ -398,7 +443,7 @@ export function TasksListPage({
                                     <DropdownMenuSeparator />
                                     <DropdownMenuItem
                                       nativeButton={false}
-                                      render={<Link href={taskHref} />}
+                                      render={<Link href={editHref} />}
                                     >
                                       <Pencil className="w-4 h-4 mr-2" />
                                       Edit task
@@ -426,9 +471,26 @@ export function TasksListPage({
                           </div>
                         </div>
 
-                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <div className="mt-3 flex flex-wrap items-center gap-2 relative z-20">
                           <PriorityBadge priority={t.priority} />
-                          <StatusBadge status={t.status} />
+                          {canChangeStatus ? (
+                            <Select
+                              value={t.status}
+                              onValueChange={(v) => onStatusChange(t, v)}
+                              disabled={updatingId === t.id}
+                            >
+                              <SelectTrigger className="h-7 text-xs font-medium border-0 bg-muted/50 shadow-none">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={TASK_STATUS.TODO}>To Do</SelectItem>
+                                <SelectItem value={TASK_STATUS.IN_PROGRESS}>In Progress</SelectItem>
+                                <SelectItem value={TASK_STATUS.DONE}>Done</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <StatusBadge status={t.status} />
+                          )}
                           <span className="text-xs text-muted-foreground">
                             Due {formatDate(t.due)}
                           </span>

@@ -20,6 +20,7 @@ export async function GET(request, ctx) {
   const result = await getProjectWithTasks({
     project,
     userId: session.userId,
+    role: ROLE,
   });
 
   return ok({ ...result, role: roleRes.membership.role });

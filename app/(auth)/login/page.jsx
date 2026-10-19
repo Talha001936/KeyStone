@@ -1,4 +1,3 @@
-// app/(auth)/login/page.jsx
 "use client";
 
 import Link from "next/link";
@@ -19,16 +18,10 @@ function safeNext(next) {
   return next;
 }
 
-
 function resolveTarget(user, memberships, next) {
   const primaryRole = memberships?.[0]?.role;
-
-  if (!primaryRole) {
-    return "/owner";
-  }
-
+  if (!primaryRole) return "/owner";
   if (next && next.startsWith(`/${primaryRole}`)) return next;
-
   return `/${primaryRole}`;
 }
 
@@ -36,10 +29,10 @@ function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = safeNext(params.get("next"));
-  const registered = params.get("registered") === "1";
+  const emailParam = params.get("email") || "";
   const { login, user, memberships, status, loading: authLoading } = useAuth();
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(emailParam);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -67,7 +60,7 @@ function LoginForm() {
     setLoading(true);
     try {
       const data = await login(email, password);
-      
+
       setEmail("");
       setPassword("");
 
@@ -104,15 +97,6 @@ function LoginForm() {
           Log in to continue to your workspace.
         </p>
       </div>
-
-      {registered && (
-        <div className="rounded-lg border border-accent/40 bg-accent/5 px-4 py-3 text-sm">
-          <p className="font-medium">Account created</p>
-          <p className="text-muted-foreground mt-1">
-            Ask a workspace Owner or Admin to invite you, then log in here.
-          </p>
-        </div>
-      )}
 
       <form onSubmit={handleSubmit} className="space-y-5" autoComplete="on">
         <div className="space-y-2">
@@ -181,9 +165,7 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <Suspense
-      fallback={
-        <div className="text-sm text-muted-foreground">Loading…</div>
-      }
+      fallback={<div className="text-sm text-muted-foreground">Loading…</div>}
     >
       <LoginForm />
     </Suspense>

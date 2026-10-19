@@ -41,8 +41,16 @@ export function Navbar() {
   const roleLabels = { owner: "Owner", admin: "Admin", member: "Member" };
 
   const handleWorkspaceChange = (ws) => {
+    if (ws.id === currentWorkspace?.id && ws.role === currentWorkspace?.role)
+      return;
     setCurrentWorkspace(ws);
-    router.push(`/${ws.role}`);
+    // Hard reload guarantees the newly-selected workspace is honoured
+    // by every subsequent data fetch (hooks, contexts, layouts).
+    if (typeof window !== "undefined") {
+      window.location.href = `/${ws.role}`;
+    } else {
+      router.push(`/${ws.role}`);
+    }
   };
 
   const handleLogout = async () => {

@@ -48,11 +48,8 @@ function buildWorkspaces(memberships) {
 }
 
 export function WorkspaceProvider({ children }) {
-  const { memberships, loading: authLoading } = useAuth();
+  const { memberships, loading: authLoading, refresh: refreshAuth } = useAuth();
   const [currentWorkspace, setCurrentWorkspaceState] = useState(null);
-  // `resolving` stays true until we've picked a concrete workspace (or
-  // confirmed none exists). This prevents consumers from observing a
-  // stale/placeholder value with `role: null`.
   const [resolving, setResolving] = useState(true);
 
   const workspaces = useMemo(() => buildWorkspaces(memberships), [memberships]);
@@ -112,12 +109,15 @@ export function WorkspaceProvider({ children }) {
     setCurrentWorkspaceState(ws || null);
   }, []);
 
+  // Force refresh of the workspace metadata (useful after updating name/slug)
+  const refreshWorkspace = useCallback(async () => {
+    await refreshAuth();
+  }, [refreshAuth]);
+
   const hasWorkspace = workspaces.length > 0;
   const safeWorkspace = currentWorkspace || PLACEHOLDER_WORKSPACE;
   const workspaceId = currentWorkspace?.id || null;
 
-  // Aggregate loading — the caller should treat the workspace as
-  // unresolved until BOTH auth is done AND we've picked a workspace.
   const loading = authLoading || resolving;
 
   const value = useMemo(
@@ -126,6 +126,7 @@ export function WorkspaceProvider({ children }) {
       currentWorkspace: safeWorkspace,
       currentWorkspaceId: workspaceId,
       setCurrentWorkspace,
+      refreshWorkspace,
       hasWorkspace,
       loading,
     }),
@@ -134,6 +135,7 @@ export function WorkspaceProvider({ children }) {
       safeWorkspace,
       workspaceId,
       setCurrentWorkspace,
+      refreshWorkspace,
       hasWorkspace,
       loading,
     ]

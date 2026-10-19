@@ -9,10 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/auth/PasswordInput";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import { ArrowLeft } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const toast = useToast();
   const { register } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -29,14 +31,12 @@ export default function RegisterPage() {
     }
     setLoading(true);
     try {
-      const data = await register(name, email, password);
-      if (data.requiresInvite) {
-        router.replace("/login?registered=1");
-      } else {
-        router.replace(`/${data.role}`);
-      }
+      await register(name, email, password);
+      toast.success("Workspace created successfully. Please log in.");
+      router.replace(`/login?email=${encodeURIComponent(email)}`);
       router.refresh();
     } catch (err) {
+      // This catches the error thrown from the backend (e.g. owner already)
       setError(err?.message || "Registration failed.");
     } finally {
       setLoading(false);
@@ -60,10 +60,10 @@ export default function RegisterPage() {
 
       <div className="space-y-2">
         <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-          Create your account
+          Create your workspace
         </h1>
         <p className="text-muted-foreground">
-          Sign up to get started with TaskFlow.
+          Sign up and we&apos;ll set up a private workspace just for you.
         </p>
       </div>
 
@@ -77,6 +77,7 @@ export default function RegisterPage() {
             onChange={(e) => setName(e.target.value)}
             required
             autoComplete="name"
+            disabled={loading}
           />
         </div>
 
@@ -91,6 +92,7 @@ export default function RegisterPage() {
             onChange={(e) => setEmail(e.target.value)}
             required
             autoComplete="email"
+            disabled={loading}
           />
         </div>
 
@@ -102,6 +104,7 @@ export default function RegisterPage() {
             onChange={(e) => setPassword(e.target.value)}
             required
             autoComplete="new-password"
+            disabled={loading}
           />
           <p className="text-xs text-muted-foreground">
             Must be at least 8 characters long.
@@ -119,13 +122,16 @@ export default function RegisterPage() {
           disabled={loading}
           className="w-full h-12 text-base font-semibold"
         >
-          {loading ? "Creating account…" : "Create account"}
+          {loading ? "Processing…" : "Create workspace"}
         </Button>
       </form>
 
       <p className="text-center text-sm text-muted-foreground">
         Already have an account?{" "}
-        <Link href="/login" className="text-primary font-semibold hover:underline">
+        <Link
+          href="/login"
+          className="text-primary font-semibold hover:underline"
+        >
           Log in
         </Link>
       </p>

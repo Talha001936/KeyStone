@@ -1,4 +1,4 @@
-// app/api/owner/activities/stream/route.js
+// app/api/member/activities/stream/route.js
 import { requireSession, requireRole, resolveWorkspaceId } from "@/lib/auth";
 import { buildActivitiesStream } from "@/lib/activities";
 
@@ -27,7 +27,13 @@ export async function GET(request) {
   let since = sinceParam ? new Date(sinceParam) : new Date();
   if (Number.isNaN(since.getTime())) since = new Date();
 
-  const stream = buildActivitiesStream({ workspaceId, since, request });
+  const stream = buildActivitiesStream({
+    workspaceId,
+    since,
+    request,
+    role: ROLE,
+    memberId: session.userId,
+  });
 
   return new Response(stream, {
     headers: {

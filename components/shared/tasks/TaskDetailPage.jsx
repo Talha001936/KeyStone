@@ -2,15 +2,13 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -23,9 +21,7 @@ import { ErrorState } from "@/components/shared/ui/ErrorState";
 import { useToast } from "@/contexts/ToastContext";
 import { useTask } from "@/hooks/useTask";
 import { useTaskComments } from "@/hooks/useTaskComments";
-import { useMembers } from "@/hooks/useMembers";
 import { api, ApiError } from "@/lib/api";
-import { validateTask, todayISO } from "@/lib/validation";
 import {
   ArrowLeft,
   Pencil,
@@ -37,10 +33,9 @@ import {
   Flag,
   Hash,
   Lock,
+  Clock,
 } from "lucide-react";
-
-const STATUS_LABELS = { todo: "To Do", in_progress: "In Progress", done: "Done" };
-const PRIORITY_LABELS = { low: "Low", medium: "Medium", high: "High" };
+import { STATUS_LABELS, PRIORITY_LABELS, TASK_STATUS } from "@/lib/constants";
 
 function formatDate(value) {
   if (!value) return "—";
@@ -83,19 +78,11 @@ export function TaskDetailPage({ role, slug, taskNumber }) {
   const { task, role: callerRole, isAssignee, loading, error, refresh } =
     useTask(role, slug, taskNumber);
 
-  // Permissions derived from the *actual* caller role returned by the API.
   const canEditAll = callerRole === "owner" || callerRole === "admin";
   const canChangeStatus = isAssignee;
   const canDelete = canEditAll;
-  // Comments: owner/admin always; assignee always; otherwise no access.
   const canComment = isAssignee || canEditAll;
 
-  // Only fetch members when the caller can reassign (owner/admin).
-  const { members, loading: membersLoading } = useMembers(role, {
-    skip: !canEditAll,
-  });
-
-  // Only fetch comments when the caller has read access.
   const { comments, loading: commentsLoading, addComment } = useTaskComments(
     role,
     slug,
@@ -103,82 +90,10 @@ export function TaskDetailPage({ role, slug, taskNumber }) {
     { skip: !canComment }
   );
 
-  const [editing, setEditing] = useState(false);
-  const [form, setForm] = useState(null);
-  const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
-
   const [commentBody, setCommentBody] = useState("");
   const [posting, setPosting] = useState(false);
-
-  const projectDue = useMemo(() => {
-    if (!task?.projectDueDate) return null;
-    const d = new Date(task.projectDueDate);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toISOString().slice(0, 10);
-  }, [task?.projectDueDate]);
-
-  const enterEdit = () => {
-    setForm({
-      title: task.title || "",
-      description: task.description || "",
-      status: task.status || "todo",
-      priority: task.priority || "medium",
-      assigneeId: task.assigneeId || "",
-      dueDate: task.dueDate ? task.dueDate.slice(0, 10) : "",
-    });
-    setEditing(true);
-  };
-
-  const cancelEdit = () => {
-    setEditing(false);
-    setForm(null);
-  };
-
-  const update = (key, value) => setForm((f) => ({ ...f, [key]: value }));
-
-  const onSave = async () => {
-    if (!form || !task) return;
-
-    const payload = {
-      title: form.title,
-      description: form.description,
-      priority: form.priority,
-      assigneeId: form.assigneeId || null,
-      dueDate: form.dueDate || null,
-    };
-    if (canChangeStatus) payload.status = form.status;
-
-    const v = validateTask(payload, "update", {
-      projectDueDate: task.projectDueDate || null,
-    });
-    if (!v.ok) {
-      toast.error(v.message);
-      return;
-    }
-
-    setSaving(true);
-    try {
-      await api.patch(`/api/${role}/projects/${slug}/tasks/${taskNumber}`, {
-        ...v.value,
-        _version: task.version,
-      });
-      toast.success("Task updated");
-      setEditing(false);
-      setForm(null);
-      refresh();
-    } catch (err) {
-      if (err instanceof ApiError && err.code === "CONFLICT") {
-        toast.error("Task was updated by someone else");
-        refresh();
-      } else {
-        toast.error(err?.message || "Failed to save");
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
+  const [updatingStatus, setUpdatingStatus] = useState(false);
 
   const onDelete = async () => {
     try {
@@ -206,9 +121,26 @@ export function TaskDetailPage({ role, slug, taskNumber }) {
     }
   };
 
-  const handleBack = () => {
-    if (editing) setConfirmDiscard(true);
-    else router.push(`/${role}/projects/${slug}`);
+  const onUpdateStatus = async (newStatus) => {
+    if (newStatus === task.status) return;
+    setUpdatingStatus(true);
+    try {
+      await api.patch(`/api/${role}/projects/${slug}/tasks/${taskNumber}`, {
+        status: newStatus,
+        _version: task.version,
+      });
+      toast.success(`Status changed to ${STATUS_LABELS[newStatus]}`);
+      refresh();
+    } catch (err) {
+      if (err instanceof ApiError && err.code === "CONFLICT") {
+        toast.error("Task was updated by someone else");
+        refresh();
+      } else {
+        toast.error(err.message || "Failed to update status");
+      }
+    } finally {
+      setUpdatingStatus(false);
+    }
   };
 
   if (loading) {
@@ -222,437 +154,242 @@ export function TaskDetailPage({ role, slug, taskNumber }) {
   if (error) return <ErrorState error={error} onRetry={refresh} />;
   if (!task) return <ErrorState error={{ message: "Task not found" }} />;
 
-  const selectedMember =
-    members.find((m) => m.userId === (form?.assigneeId || task.assigneeId)) ||
-    null;
-  const minDue = todayISO();
-  const maxDue = projectDue || undefined;
-
   return (
-    <div className="max-w-4xl mx-auto space-y-5">
-      <button
-        onClick={handleBack}
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+    <div className="max-w-5xl mx-auto space-y-8 pb-12">
+      <Link
+        href={`/${role}/projects/${slug}`}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
-        <ArrowLeft className="w-3.5 h-3.5" />
+        <ArrowLeft className="w-4 h-4" />
         Back to project
-      </button>
+      </Link>
 
-      {editing ? (
-        <Card className="overflow-hidden">
-          <div className="px-6 py-6 space-y-6">
-            <div className="space-y-2">
-              <Label htmlFor="title">Title</Label>
-              <Input
-                id="title"
-                value={form.title}
-                onChange={(e) => update("title", e.target.value)}
-                className="h-12 text-lg font-semibold"
-                placeholder="Task title"
-                autoFocus
-              />
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
-              {canChangeStatus && (
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={form.status}
-                    onValueChange={(v) => update("status", v)}
-                  >
-                    <SelectTrigger className="h-11 w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.entries(STATUS_LABELS).map(([k, label]) => (
-                        <SelectItem key={k} value={k}>
-                          {label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label>Priority</Label>
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+        <div className="space-y-3 min-w-0">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-mono font-semibold text-muted-foreground bg-muted/40 px-2.5 py-1 rounded-md">
+              #{task.displayNumber ?? "—"}
+            </span>
+            
+            {/* If assignee, show status dropdown. Otherwise, show static pill. */}
+            {canChangeStatus && !canEditAll ? (
+              <div className="relative z-10">
                 <Select
-                  value={form.priority}
-                  onValueChange={(v) => update("priority", v)}
+                  value={task.status}
+                  onValueChange={onUpdateStatus}
+                  disabled={updatingStatus}
                 >
-                  <SelectTrigger className="h-11 w-full">
+                  <SelectTrigger className={`h-8 px-3 py-1 rounded-full border-0 font-semibold uppercase tracking-wider text-xs ring-1 ring-inset focus:ring-2 ${getStatusStyles(task.status)}`}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Object.entries(PRIORITY_LABELS).map(([k, label]) => (
-                      <SelectItem key={k} value={k}>
-                        {label}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value={TASK_STATUS.TODO}>To Do</SelectItem>
+                    <SelectItem value={TASK_STATUS.IN_PROGRESS}>In Progress</SelectItem>
+                    <SelectItem value={TASK_STATUS.DONE}>Done</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+            ) : (
+              <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${getStatusStyles(task.status)}`}>
+                {STATUS_LABELS[task.status] || task.status}
+              </span>
+            )}
 
-              {canEditAll && (
-                <div className="space-y-2">
-                  <Label>Assignee</Label>
-                  <Select
-                    value={form.assigneeId || "none"}
-                    onValueChange={(v) =>
-                      update("assigneeId", v === "none" ? "" : v)
-                    }
-                    disabled={membersLoading}
-                  >
-                    <SelectTrigger className="h-11 w-full">
-                      <SelectValue>
-                        {selectedMember ? (
-                          <span className="flex items-center gap-2">
-                            <Avatar className="h-5 w-5">
-                              <AvatarFallback className="bg-muted text-foreground text-[9px] font-semibold">
-                                {initials(selectedMember.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="truncate">
-                              {selectedMember.name}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">
-                            Unassigned
-                          </span>
-                        )}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">Unassigned</SelectItem>
-                      {members.map((m) => (
-                        <SelectItem key={m.userId} value={m.userId}>
-                          <span className="flex items-center gap-2">
-                            <Avatar className="h-5 w-5">
-                              <AvatarFallback className="bg-muted text-foreground text-[9px] font-semibold">
-                                {initials(m.name)}
-                              </AvatarFallback>
-                            </Avatar>
-                            <span className="truncate">{m.name}</span>
-                          </span>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
+            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wider ${getPriorityStyles(task.priority)}`}>
+              {PRIORITY_LABELS[task.priority] || task.priority}
+            </span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground leading-tight">
+            {task.title}
+          </h1>
+        </div>
 
-              {canEditAll && (
-                <div className="space-y-2">
-                  <Label>Due date</Label>
-                  <Input
-                    type="date"
-                    value={form.dueDate}
-                    onChange={(e) => update("dueDate", e.target.value)}
-                    min={minDue}
-                    max={maxDue}
-                    className="h-11"
-                  />
-                </div>
-              )}
+        <div className="flex items-center gap-3 shrink-0">
+          {/* Only Owner/Admin can edit all details */}
+          {canEditAll && (
+            <Button
+              variant="outline"
+              className="h-10 px-5 shadow-sm font-semibold"
+              nativeButton={false}
+              render={<Link href={`/${role}/projects/${slug}/tasks/${taskNumber}/edit`} />}
+            >
+              <Pencil className="w-4 h-4 mr-2" />
+              Edit
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              variant="destructive"
+              className="h-10 px-5 shadow-sm font-semibold"
+              onClick={() => setConfirmDelete(true)}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 space-y-8">
+          <Card className="p-8 border-border/60 shadow-sm">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4">
+              Description
+            </h2>
+            {task.description ? (
+              <p className="text-[15px] leading-relaxed whitespace-pre-wrap text-foreground/90">
+                {task.description}
+              </p>
+            ) : (
+              <p className="text-[15px] text-muted-foreground italic">
+                No description provided.
+              </p>
+            )}
+          </Card>
+
+          <Card className="p-8 border-border/60 shadow-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                Comments {comments.length > 0 && `(${comments.length})`}
+              </h2>
             </div>
 
-            <Separator />
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={form.description}
-                onChange={(e) => update("description", e.target.value)}
-                placeholder="Add a description…"
-                className="min-h-[180px]"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setConfirmDiscard(true)}
-                disabled={saving}
-              >
-                Cancel
-              </Button>
-              <Button onClick={onSave} disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving…
-                  </>
+            {canComment ? (
+              <div className="space-y-6">
+                {commentsLoading ? (
+                  <div className="space-y-4">
+                    {[1, 2].map((i) => (
+                      <div key={i} className="h-16 rounded-xl bg-muted/30 animate-pulse" />
+                    ))}
+                  </div>
+                ) : comments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic py-4">
+                    No comments yet. Start the conversation.
+                  </p>
                 ) : (
-                  "Save changes"
-                )}
-              </Button>
-            </div>
-          </div>
-        </Card>
-      ) : (
-        <>
-          <div className="flex items-start justify-between gap-4 flex-wrap">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 flex-wrap mb-2">
-                <span className="text-[11px] font-mono text-muted-foreground">
-                  #{task.displayNumber ?? "—"}
-                </span>
-                <LocalStatusBadge status={task.status} />
-                <LocalPriorityBadge priority={task.priority} />
-              </div>
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight leading-tight break-words">
-                {task.title}
-              </h1>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              {canEditAll && (
-                <Button variant="outline" className="h-9" onClick={enterEdit}>
-                  <Pencil className="w-3.5 h-3.5 mr-2" />
-                  Edit
-                </Button>
-              )}
-              {canDelete && (
-                <Button
-                  variant="destructive"
-                  className="h-9"
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  <Trash2 className="w-3.5 h-3.5 mr-2" />
-                  Delete
-                </Button>
-              )}
-            </div>
-          </div>
-
-          <Card className="overflow-hidden">
-            <div className="grid lg:grid-cols-3">
-              <div
-                className={
-                  canComment
-                    ? "lg:col-span-2 lg:border-r border-border/60"
-                    : "lg:col-span-3"
-                }
-              >
-                <section className="px-6 py-6">
-                  <SectionLabel>Description</SectionLabel>
-                  {task.description ? (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap mt-3">
-                      {task.description}
-                    </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground italic mt-3">
-                      No description.
-                    </p>
-                  )}
-                </section>
-
-                {/* ---- Comments: only rendered for users with comment access ---- */}
-                {canComment ? (
-                  <>
-                    <Separator />
-
-                    <section className="px-6 py-6">
-                      <SectionLabel>
-                        Comments
-                        {comments.length > 0 && (
-                          <span className="ml-1.5 text-muted-foreground/70 font-normal">
-                            ({comments.length})
-                          </span>
-                        )}
-                      </SectionLabel>
-
-                      <div className="mt-4">
-                        {commentsLoading ? (
-                          <div className="space-y-3">
-                            {[1, 2].map((i) => (
-                              <div
-                                key={i}
-                                className="h-16 rounded-lg bg-muted/30 animate-pulse"
-                              />
-                            ))}
+                  <div className="space-y-6">
+                    {comments.map((c) => (
+                      <div key={c.id} className="flex gap-4">
+                        <Avatar className="h-10 w-10 shrink-0 shadow-sm border border-border/50">
+                          <AvatarFallback className="bg-accent/20 text-accent-foreground text-sm font-bold">
+                            {c.authorInitials}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0 bg-muted/20 rounded-2xl rounded-tl-sm p-4 border border-border/40">
+                          <div className="flex items-baseline gap-3 mb-2">
+                            <span className="text-sm font-bold text-foreground">
+                              {c.authorName}
+                            </span>
+                            <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {relativeTime(c.createdAt)}
+                            </span>
                           </div>
-                        ) : comments.length === 0 ? (
-                          <p className="text-sm text-muted-foreground italic">
-                            No comments yet.
+                          <p className="text-[14px] whitespace-pre-wrap break-words leading-relaxed text-foreground/80">
+                            {c.body}
                           </p>
-                        ) : (
-                          <div className="space-y-4">
-                            {comments.map((c) => (
-                              <div key={c.id} className="flex gap-3">
-                                <Avatar className="h-8 w-8 shrink-0">
-                                  <AvatarFallback className="bg-accent/25 text-accent-foreground text-[11px] font-semibold">
-                                    {c.authorInitials}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-baseline gap-2 mb-1">
-                                    <span className="text-sm font-medium">
-                                      {c.authorName}
-                                    </span>
-                                    <span className="text-[11px] text-muted-foreground">
-                                      {relativeTime(c.createdAt)}
-                                    </span>
-                                  </div>
-                                  <p className="text-sm whitespace-pre-wrap break-words leading-relaxed text-muted-foreground">
-                                    {c.body}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-5 pt-5 border-t border-dashed border-border/70">
-                        <Textarea
-                          placeholder="Write a comment…"
-                          className="min-h-[80px]"
-                          value={commentBody}
-                          onChange={(e) => setCommentBody(e.target.value)}
-                          maxLength={5000}
-                          disabled={posting}
-                        />
-                        <div className="flex justify-end mt-3">
-                          <Button
-                            size="sm"
-                            onClick={onPostComment}
-                            disabled={posting || !commentBody.trim()}
-                          >
-                            {posting ? (
-                              <>
-                                <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
-                                Posting…
-                              </>
-                            ) : (
-                              <>
-                                <Send className="w-3.5 h-3.5 mr-2" />
-                                Post comment
-                              </>
-                            )}
-                          </Button>
                         </div>
                       </div>
-                    </section>
-                  </>
-                ) : (
-                  /* Read-only users: subtle notice instead of a comment box. */
-                  <>
-                    <Separator />
-                    <section className="px-6 py-5">
-                      <div className="flex items-start gap-2.5 text-xs text-muted-foreground">
-                        <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                        <p>
-                          Only the assignee and workspace admins can view or
-                          post comments on this task.
-                        </p>
-                      </div>
-                    </section>
-                  </>
+                    ))}
+                  </div>
                 )}
-              </div>
 
-              {canComment && (
-                <div className="bg-muted/30 rounded-lg">
-                  <section className="px-6 py-6">
-                    <SectionLabel>Details</SectionLabel>
-                    <dl className="mt-4 space-y-3.5">
-                      <DetailRow
-                        icon={Hash}
-                        label="Task ID"
-                        value={
-                          <span className="font-mono text-xs">{task.code}</span>
-                        }
-                      />
-                      <DetailRow
-                        icon={Flag}
-                        label="Priority"
-                        value={<LocalPriorityBadge priority={task.priority} />}
-                      />
-                      <DetailRow
-                        icon={User}
-                        label="Assignee"
-                        value={
-                          task.assigneeName ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <Avatar className="h-5 w-5">
-                                <AvatarFallback className="bg-muted text-foreground text-[9px] font-semibold">
-                                  {task.assigneeInitials || "?"}
-                                </AvatarFallback>
-                              </Avatar>
-                              <span className="truncate">
-                                {task.assigneeName}
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground italic">
-                              Unassigned
-                            </span>
-                          )
-                        }
-                      />
-                      <DetailRow
-                        icon={Calendar}
-                        label="Due date"
-                        value={task.dueDate ? formatDate(task.dueDate) : "—"}
-                      />
-                    </dl>
-                  </section>
-                </div>
-              )}
-            </div>
-
-            {/* When comments are hidden, move Details into the main column so
-                the layout doesn't collapse into a single sidebar. */}
-            {!canComment && (
-              <div className="border-t border-border/60 px-6 py-6">
-                <SectionLabel>Details</SectionLabel>
-                <dl className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4">
-                  <div>
-                    <dt className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                      <Hash className="w-3.5 h-3.5" /> Task ID
-                    </dt>
-                    <dd className="text-sm mt-1 font-mono">
-                      {task.code}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                      <Flag className="w-3.5 h-3.5" /> Priority
-                    </dt>
-                    <dd className="text-sm mt-1">
-                      <LocalPriorityBadge priority={task.priority} />
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                      <User className="w-3.5 h-3.5" /> Assignee
-                    </dt>
-                    <dd className="text-sm mt-1 truncate">
-                      {task.assigneeName || (
-                        <span className="text-muted-foreground italic">
-                          Unassigned
-                        </span>
+                <div className="pt-6 border-t border-border/60 mt-6">
+                  <Textarea
+                    placeholder="Write a comment…"
+                    className="min-h-[100px] bg-muted/10 resize-none rounded-xl focus-visible:ring-accent/50"
+                    value={commentBody}
+                    onChange={(e) => setCommentBody(e.target.value)}
+                    maxLength={5000}
+                    disabled={posting}
+                  />
+                  <div className="flex justify-end mt-4">
+                    <Button
+                      onClick={onPostComment}
+                      disabled={posting || !commentBody.trim()}
+                      className="h-10 px-6 font-semibold shadow-sm"
+                    >
+                      {posting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Posting…
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Post comment
+                        </>
                       )}
-                    </dd>
+                    </Button>
                   </div>
-                  <div>
-                    <dt className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-                      <Calendar className="w-3.5 h-3.5" /> Due date
-                    </dt>
-                    <dd className="text-sm mt-1">
-                      {task.dueDate ? formatDate(task.dueDate) : "—"}
-                    </dd>
-                  </div>
-                </dl>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 p-4 bg-muted/20 rounded-xl border border-border/50">
+                <Lock className="w-5 h-5 text-muted-foreground shrink-0 mt-0.5" />
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  Only the assignee and workspace admins can view or post comments on this task.
+                </p>
               </div>
             )}
           </Card>
-        </>
-      )}
+        </div>
+
+        <div className="space-y-6">
+          <Card className="p-6 border-border/60 shadow-sm bg-card">
+            <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-5">
+              Task Details
+            </h2>
+            <div className="space-y-5">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Hash className="w-3.5 h-3.5" /> Task ID
+                </span>
+                <span className="text-sm font-mono font-medium">{task.code}</span>
+              </div>
+              <Separator className="bg-border/50" />
+              
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Flag className="w-3.5 h-3.5" /> Priority
+                </span>
+                <span className={`inline-flex items-center w-fit rounded-md px-2.5 py-1 text-xs font-bold uppercase tracking-wider ${getPriorityStyles(task.priority)}`}>
+                  {PRIORITY_LABELS[task.priority] || task.priority}
+                </span>
+              </div>
+              <Separator className="bg-border/50" />
+
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5" /> Assignee
+                </span>
+                {task.assigneeName ? (
+                  <div className="flex items-center gap-2.5 bg-muted/20 p-2 rounded-lg border border-border/40">
+                    <Avatar className="h-7 w-7">
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                        {task.assigneeInitials || initials(task.assigneeName)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <span className="text-sm font-medium truncate">{task.assigneeName}</span>
+                  </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground italic bg-muted/20 p-2 rounded-lg border border-border/40">Unassigned</span>
+                )}
+              </div>
+              <Separator className="bg-border/50" />
+
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5" /> Due date
+                </span>
+                <span className="text-sm font-medium text-foreground">
+                  {task.dueDate ? formatDate(task.dueDate) : "—"}
+                </span>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </div>
 
       <ConfirmDialog
         open={confirmDelete}
@@ -663,74 +400,32 @@ export function TaskDetailPage({ role, slug, taskNumber }) {
         variant="destructive"
         onConfirm={onDelete}
       />
-
-      <ConfirmDialog
-        open={confirmDiscard}
-        onOpenChange={setConfirmDiscard}
-        title="Discard changes?"
-        description="You have unsaved changes. If you leave now, they will be lost."
-        confirmLabel="Discard"
-        cancelLabel="Keep editing"
-        variant="destructive"
-        onConfirm={() => {
-          setConfirmDiscard(false);
-          cancelEdit();
-        }}
-      />
     </div>
   );
 }
 
-function SectionLabel({ children }) {
-  return (
-    <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-      {children}
-    </h2>
-  );
+function getStatusStyles(status) {
+  switch (status) {
+    case "todo":
+      return "bg-muted text-muted-foreground ring-1 ring-border";
+    case "in_progress":
+      return "bg-accent/20 text-accent-foreground ring-1 ring-accent/30";
+    case "done":
+      return "bg-primary text-primary-foreground shadow-sm ring-1 ring-primary";
+    default:
+      return "bg-muted text-muted-foreground ring-1 ring-border";
+  }
 }
 
-function DetailRow({ icon: Icon, label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <dt className="inline-flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-        <Icon className="w-3.5 h-3.5" />
-        {label}
-      </dt>
-      <dd className="text-sm text-right min-w-0 truncate">{value}</dd>
-    </div>
-  );
-}
-
-function LocalStatusBadge({ status }) {
-  const styles = {
-    todo: "bg-muted text-muted-foreground",
-    in_progress: "bg-accent/25 text-accent-foreground",
-    done: "bg-primary text-primary-foreground",
-  };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize ${
-        styles[status] || styles.todo
-      }`}
-    >
-      {STATUS_LABELS[status] || status}
-    </span>
-  );
-}
-
-function LocalPriorityBadge({ priority }) {
-  const styles = {
-    low: "bg-secondary/25 text-secondary-foreground",
-    medium: "bg-muted text-muted-foreground",
-    high: "bg-destructive/15 text-destructive",
-  };
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold capitalize ${
-        styles[priority] || styles.medium
-      }`}
-    >
-      {PRIORITY_LABELS[priority] || priority}
-    </span>
-  );
+function getPriorityStyles(priority) {
+  switch (priority) {
+    case "low":
+      return "bg-secondary/20 text-secondary-foreground ring-1 ring-secondary/30";
+    case "medium":
+      return "bg-muted text-muted-foreground ring-1 ring-border";
+    case "high":
+      return "bg-destructive/10 text-destructive ring-1 ring-destructive/20";
+    default:
+      return "bg-muted text-muted-foreground";
+  }
 }

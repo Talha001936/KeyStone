@@ -1,11 +1,9 @@
-// components/shared/layout/RoleGate.jsx
 "use client";
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { NoWorkspaceState } from "@/components/shared/layout/NoWorkspaceState";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, RefreshCw } from "lucide-react";
@@ -29,7 +27,7 @@ function AuthErrorState({ onRetry }) {
           <AlertCircle className="w-7 h-7 text-destructive" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">Couldn't load your session</h1>
+          <h1 className="text-2xl font-bold">Couldn&apos;t load your session</h1>
           <p className="text-sm text-muted-foreground">
             There was a problem reaching the server. Please try again.
           </p>
@@ -53,12 +51,10 @@ export function RoleGate({ role, children }) {
 
   const isUnauthenticated = status === "unauthenticated";
   const isError = status === "error";
-  const isAuthenticated = status === "authenticated";
 
   const roleMismatch =
     !loading && hasWorkspace && workspaceRole && workspaceRole !== role;
 
-  // Redirects
   useEffect(() => {
     if (loading) return;
     if (isUnauthenticated) {
@@ -88,24 +84,16 @@ export function RoleGate({ role, children }) {
     return () => window.removeEventListener("tf:forbidden", onForbidden);
   }, [pathname, workspaceRole, router]);
 
-  // Determine what, if anything, should cover the children
   const showLoader = loading;
   const showError = !loading && isError;
   const showUnauthLoader = !loading && isUnauthenticated;
-  const showNoWorkspace = !loading && isAuthenticated && !hasWorkspace;
   const showRoleMismatchLoader = !loading && hasWorkspace && !!roleMismatch;
 
   const blocked =
-    showLoader ||
-    showError ||
-    showUnauthLoader ||
-    showNoWorkspace ||
-    showRoleMismatchLoader;
+    showLoader || showError || showUnauthLoader || showRoleMismatchLoader;
 
   return (
     <>
-      {/* Children always render — Next.js can validate the whole segment tree.
-          When blocked, a fixed overlay covers them. */}
       <div
         className={blocked ? "invisible pointer-events-none" : undefined}
         aria-hidden={blocked || undefined}
@@ -120,7 +108,6 @@ export function RoleGate({ role, children }) {
           {showUnauthLoader && (
             <FullScreenLoader label="Redirecting to login…" />
           )}
-          {showNoWorkspace && <NoWorkspaceState />}
           {showRoleMismatchLoader && <FullScreenLoader label="Redirecting…" />}
         </div>
       )}

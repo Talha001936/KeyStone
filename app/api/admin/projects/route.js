@@ -16,10 +16,7 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   let workspaceId;
   try {
-    workspaceId = await resolveWorkspaceId(
-      session.userId,
-      searchParams.get("workspaceId")
-    );
+    workspaceId = await resolveWorkspaceId(session.userId, searchParams.get("workspaceId"));
   } catch (e) {
     return e.__http || errors.forbidden();
   }
@@ -29,7 +26,7 @@ export async function GET(request) {
   if (roleRes.error) return errors.forbidden();
 
   const { page, pageSize, offset } = parsePagination(searchParams);
-  const result = await listProjects({ workspaceId, page, pageSize, offset });
+  const result = await listProjects({ workspaceId, page, pageSize, offset, role: ROLE });
 
   return ok({ ...result, page, pageSize });
 }
@@ -71,23 +68,24 @@ export async function POST(request) {
        RETURNING id, slug, name, description, status,
                  due_date AS "dueDate", created_at AS "createdAt"`,
       [
-        workspaceId,
-        slug,
-        data.name,
-        data.description || "",
-        data.status || "active",
-        data.dueDate || null,
-        session.userId,
+        workspaceId, slug, data.name, data.description || "",
+        data.status || "active", data.dueDate || null, session.userId,
       ]
     );
     const p = ins.rows[0];
+
+    if (Array.isArray(body.projectMemberIds)) {
+      for (const uId of body.projectMemberIds) {
+        await client.query(
+          `INSERT INTO project_members (project_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [p.id, uId]
+        );
+      }
+    }
+
     await logActivity({
-      client,
-      workspaceId,
-      projectId: p.id,
-      actorId: session.userId,
-      type: "project_created",
-      detail: `created project ${p.name}`,
+      client, workspaceId, projectId: p.id, actorId: session.userId,
+      type: "project_created", detail: `${p.name}`,
     });
     return p;
   });

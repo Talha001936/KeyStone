@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/auth/PasswordInput";
 import { CheckCircle2 } from "lucide-react";
+import { useToast } from "@/contexts/ToastContext";
 
 function ResetPasswordForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const toast = useToast();
   const token = params.get("token") || "";
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -40,6 +42,7 @@ function ResetPasswordForm() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to reset password.");
       setSuccess(true);
+      toast.success("Password reset. Please log in.");
       setTimeout(() => router.push("/login"), 1500);
     } catch (err) {
       setError(err.message);

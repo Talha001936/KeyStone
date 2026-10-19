@@ -1,13 +1,14 @@
 // app/api/auth/register/route.js
 import { NextResponse } from "next/server";
 import { one, transaction } from "@/lib/db";
-import { hashPassword } from "@/lib/password";
+import { hashPassword, verifyPassword } from "@/lib/password";
 import {
   SESSION_COOKIE,
   encodeSession,
   sessionCookieOptions,
 } from "@/lib/session";
 import { logActivity } from "@/lib/handlers";
+import { slugify } from "@/lib/slug";
 
 export async function POST(request) {
   let body;
@@ -38,88 +39,106 @@ export async function POST(request) {
     );
   }
 
-  const existing = await one(
-    `SELECT id FROM users WHERE LOWER(email) = LOWER($1)`,
-    [email]
-  );
-  if (existing) {
-    return NextResponse.json(
-      { error: "Email already registered." },
-      { status: 409 }
-    );
-  }
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanName = name.trim();
 
-  const passwordHash = hashPassword(password);
+  const existing = await one(
+    `SELECT id, name, email, password_hash AS "passwordHash" 
+       FROM users WHERE LOWER(email) = $1`,
+    [cleanEmail]
+  );
+
+  let userId;
+
+  if (existing) {
+    // Verify password first for existing users
+    if (!existing.passwordHash) {
+      return NextResponse.json(
+        { error: "Please complete your invite setup first." },
+        { status: 400 }
+      );
+    }
+    if (!verifyPassword(password, existing.passwordHash)) {
+      return NextResponse.json(
+        { error: "Email already registered. Incorrect password." },
+        { status: 401 }
+      );
+    }
+
+    // Check if they are ALREADY an owner of any workspace
+    const isOwner = await one(
+      `SELECT 1 FROM memberships 
+        WHERE user_id = $1 AND role = 'owner' AND status = 'active'`,
+      [existing.id]
+    );
+
+    if (isOwner) {
+      return NextResponse.json(
+        { error: "You already have a workspace. You are not allowed to make another one." },
+        { status: 403 }
+      );
+    }
+
+    userId = existing.id;
+  } else {
+    // Brand new user
+    const passwordHash = hashPassword(password);
+    const created = await one(
+      `INSERT INTO users (name, email, password_hash)
+       VALUES ($1, $2, $3)
+       RETURNING id, name, email`,
+      [cleanName, cleanEmail, passwordHash]
+    );
+    userId = created.id;
+  }
 
   try {
     const result = await transaction(async (client) => {
-      const insertUser = await client.query(
-        `INSERT INTO users (name, email, password_hash)
-         VALUES ($1, LOWER($2), $3)
-         RETURNING id, name, email`,
-        [name.trim(), email, passwordHash]
+      // Get user details
+      const u = await client.query(
+        `SELECT id, name, email FROM users WHERE id = $1`,
+        [userId]
       );
-      const user = insertUser.rows[0];
+      const user = u.rows[0];
 
-      const userCount = await client.query(
-        `SELECT COUNT(*)::int AS c FROM users`
-      );
-      const isFirst = userCount.rows[0].c === 1;
+      // Create a new workspace owned by this user
+      const wsName = `${cleanName}'s Workspace`;
+      const base = slugify(wsName, { maxLen: 40 });
 
-      let workspaceId = null;
-      let role = null;
-
-      if (isFirst) {
-        const base =
-          name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 40) || "workspace";
-        const slug = `${base}-${Date.now().toString(36).slice(-4)}`;
-
-        const wsRow = await client.query(
-          `INSERT INTO workspaces (name, slug, owner_id)
-           VALUES ($1, $2, $3)
-           RETURNING id, name, slug`,
-          [`${name.trim()}'s Workspace`, slug, user.id]
+      let slug = base;
+      for (let i = 0; i < 20; i++) {
+        const dup = await client.query(
+          `SELECT 1 FROM workspaces WHERE slug = $1`,
+          [slug]
         );
-        workspaceId = wsRow.rows[0].id;
-
-        await client.query(
-          `INSERT INTO memberships (workspace_id, user_id, role, status)
-           VALUES ($1, $2, 'owner', 'active')`,
-          [workspaceId, user.id]
-        );
-        role = "owner";
-
-        await logActivity({
-          client,
-          workspaceId,
-          actorId: user.id,
-          type: "workspace_created",
-          detail: `created workspace ${wsRow.rows[0].name}`,
-        });
+        if (!dup.rows[0]) break;
+        slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
       }
 
-      return { user, workspaceId, role };
-    });
-
-    // If the user has no workspace yet, do NOT create a session.
-    // They must log in after being invited to a workspace.
-    if (!result.workspaceId) {
-      return NextResponse.json(
-        {
-          user: result.user,
-          workspaceId: null,
-          role: null,
-          requiresInvite: true,
-          message:
-            "Account created. Ask a workspace Owner or Admin to invite you, then log in.",
-        },
-        { status: 201 }
+      const wsRow = await client.query(
+        `INSERT INTO workspaces (name, slug, owner_id)
+         VALUES ($1, $2, $3)
+         RETURNING id, name, slug`,
+        [wsName, slug, user.id]
       );
-    }
+      const workspace = wsRow.rows[0];
+
+      await client.query(
+        `INSERT INTO memberships (workspace_id, user_id, role, status)
+         VALUES ($1, $2, 'owner', 'active')`,
+        [workspace.id, user.id]
+      );
+
+      await logActivity({
+        client,
+        workspaceId: workspace.id,
+        actorId: user.id,
+        type: "workspace_created",
+        detail: `created workspace ${workspace.name}`,
+      });
+
+      return { user, workspace };
+    });
 
     const session = {
       userId: result.user.id,
@@ -129,21 +148,27 @@ export async function POST(request) {
     const res = NextResponse.json(
       {
         user: result.user,
-        workspaceId: result.workspaceId,
-        role: result.role,
+        workspaceId: result.workspace.id,
+        role: "owner",
       },
       { status: 201 }
     );
+    
+    // Set the cookie
     res.cookies.set(
       SESSION_COOKIE,
       encodeSession(session),
       sessionCookieOptions()
     );
+    
+    // IMMEDIATELY clear it to force the user to log in fresh
+    res.cookies.set(SESSION_COOKIE, "", { path: "/", maxAge: 0 });
+    
     return res;
   } catch (err) {
     console.error("[/api/auth/register]", err);
     return NextResponse.json(
-      { error: "Registration failed. Please try again." },
+      { error: "Failed to create workspace." },
       { status: 500 }
     );
   }

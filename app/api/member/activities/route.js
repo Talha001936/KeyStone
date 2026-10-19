@@ -1,4 +1,4 @@
-// app/api/owner/activities/route.js
+// app/api/member/activities/route.js
 import { requireSession, requireRole, resolveWorkspaceId } from "@/lib/auth";
 import { errors, ok } from "@/lib/http";
 import { listActivities } from "@/lib/activities";
@@ -25,6 +25,11 @@ export async function GET(request) {
   const roleRes = await requireRole(session.userId, workspaceId, [ROLE]);
   if (roleRes.error) return errors.forbidden();
 
-  const result = await listActivities({ workspaceId, searchParams });
+  const result = await listActivities({
+    workspaceId,
+    searchParams,
+    role: ROLE,
+    memberId: session.userId,
+  });
   return ok(result);
 }

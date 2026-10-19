@@ -1,7 +1,6 @@
-// components/shared/ProjectCardMenu.jsx
+// components/shared/projects/ProjectCardMenu.jsx
 "use client";
 
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   DropdownMenu,
@@ -13,22 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
-/**
- * The `⋯` menu that appears on each project card.
- *
- * - Owner: Edit + Delete
- * - Admin: Edit only
- * - Member: rendered null (no menu)
- *
- * "Delete" is disabled when the project has tasks.
- */
-export function ProjectCardMenu({
-  role,
-  project,
-  onDeleteRequested,
-}) {
-  const router = useRouter();
-
+export function ProjectCardMenu({ role, project, onDeleteRequested }) {
   const canEdit = role === "owner" || role === "admin";
   const canDelete = role === "owner";
   const hasTasks = (project.tasks || 0) > 0;
@@ -47,7 +31,7 @@ export function ProjectCardMenu({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-8 w-8 text-muted-foreground hover:text-foreground"
             onClick={stop}
             aria-label="Open project actions"
           >
@@ -55,16 +39,10 @@ export function ProjectCardMenu({
           </Button>
         }
       />
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-52">
         <DropdownMenuItem
           nativeButton={false}
-          render={
-            <Link
-              // Only link change (slug):
-href={`/${role}/projects/${project.slug}/settings`}
-              onClick={stop}
-            />
-          }
+          render={<Link href={`/${role}/projects/${project.slug}/settings`} onClick={stop} />}
         >
           <Pencil className="w-4 h-4 mr-2" />
           Edit project
@@ -78,8 +56,7 @@ href={`/${role}/projects/${project.slug}/settings`}
               disabled={hasTasks}
               onClick={(e) => {
                 stop(e);
-                if (hasTasks) return;
-                onDeleteRequested?.(project);
+                if (!hasTasks) onDeleteRequested?.(project);
               }}
             >
               <Trash2 className="w-4 h-4 mr-2" />

@@ -23,6 +23,7 @@ export async function GET(request, ctx) {
   const result = await getProjectWithTasks({
     project,
     userId: session.userId,
+    role: ROLE,
   });
 
   return ok({ ...result, role: roleRes.membership.role });
@@ -33,14 +34,16 @@ export async function PATCH(request, ctx) {
   const { session, error } = await requireSession();
   if (error) return error;
 
-  let updates;
+  let body;
   try {
-    updates = await request.json();
+    body = await request.json();
   } catch {
     return errors.badRequest("Invalid JSON body.");
   }
 
-  const v = validateProject(updates, "update");
+  const { projectMemberIds, ...projectData } = body;
+
+  const v = validateProject(projectData, "update");
   if (!v.ok) return errors.badRequest(v.message);
   const data = v.value;
 
@@ -69,13 +72,24 @@ export async function PATCH(request, ctx) {
       ]
     );
     const p = res.rows[0];
+
+    if (Array.isArray(projectMemberIds)) {
+      await client.query(`DELETE FROM project_members WHERE project_id = $1`, [project.id]);
+      for (const uId of projectMemberIds) {
+        await client.query(
+          `INSERT INTO project_members (project_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+          [project.id, uId]
+        );
+      }
+    }
+
     await logActivity({
       client,
       workspaceId: project.workspaceId,
       projectId: project.id,
       actorId: session.userId,
       type: "project_updated",
-      detail: `updated project ${p.name}`,
+      detail: `${p.name}`,
     });
     return p;
   });
@@ -108,7 +122,7 @@ export async function DELETE(request, ctx) {
       workspaceId: project.workspaceId,
       actorId: session.userId,
       type: "project_deleted",
-      detail: `deleted project ${project.name}`,
+      detail: `${project.name}`,
     });
     await client.query(`DELETE FROM projects WHERE id = $1`, [project.id]);
   });

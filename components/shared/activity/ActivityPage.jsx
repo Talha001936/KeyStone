@@ -32,107 +32,27 @@ import {
   FolderMinus,
   Users,
   UserMinus,
+  Shield,
 } from "lucide-react";
 
-/* NOTE:
-   This page consumes live SSE activity events via `useActivityStream`.
-   Live events must NEVER trigger a toast — they only update the list
-   and briefly pulse the new items. User-initiated actions elsewhere in
-   the app (create/update/delete/invite) are the only things that
-   surface a toast. Any future addition to this file that calls
-   `toast()` should be considered a bug. */
-
 const META = {
-  task_created: {
-    icon: Plus,
-    badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground",
-    glow: "bg-accent/30",
-  },
-  status_changed: {
-    icon: ArrowRight,
-    badge:
-      "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground",
-    glow: "bg-primary/25",
-  },
-  assignee_changed: {
-    icon: UserPlus,
-    badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground",
-    glow: "bg-accent/30",
-  },
-  priority_changed: {
-    icon: Flag,
-    badge:
-      "bg-gradient-to-br from-secondary to-secondary/70 text-secondary-foreground",
-    glow: "bg-secondary/25",
-  },
-  task_deleted: {
-    icon: Trash2,
-    badge:
-      "bg-gradient-to-br from-destructive to-destructive/70 text-destructive-foreground",
-    glow: "bg-destructive/25",
-  },
-  comment_added: {
-    icon: MessageSquare,
-    badge:
-      "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground",
-    glow: "bg-primary/25",
-  },
-  project_created: {
-    icon: FolderPlus,
-    badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground",
-    glow: "bg-accent/30",
-  },
-  project_updated: {
-    icon: Pencil,
-    badge:
-      "bg-gradient-to-br from-secondary to-secondary/70 text-secondary-foreground",
-    glow: "bg-secondary/25",
-  },
-  project_deleted: {
-    icon: FolderMinus,
-    badge:
-      "bg-gradient-to-br from-destructive to-destructive/70 text-destructive-foreground",
-    glow: "bg-destructive/25",
-  },
-  member_invited: {
-    icon: UserPlus,
-    badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground",
-    glow: "bg-accent/30",
-  },
-  member_joined: {
-    icon: Users,
-    badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground",
-    glow: "bg-accent/30",
-  },
-  member_removed: {
-    icon: UserMinus,
-    badge:
-      "bg-gradient-to-br from-destructive to-destructive/70 text-destructive-foreground",
-    glow: "bg-destructive/25",
-  },
-  member_role_changed: {
-    icon: Users,
-    badge:
-      "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground",
-    glow: "bg-primary/25",
-  },
-  member_status_changed: {
-    icon: Users,
-    badge:
-      "bg-gradient-to-br from-secondary to-secondary/70 text-secondary-foreground",
-    glow: "bg-secondary/25",
-  },
-  ownership_transferred: {
-    icon: Users,
-    badge:
-      "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground",
-    glow: "bg-primary/25",
-  },
-  workspace_created: {
-    icon: FolderPlus,
-    badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground",
-    glow: "bg-accent/30",
-  },
+  task_created: { icon: Plus, badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground", glow: "bg-accent/30" },
+  status_changed: { icon: ArrowRight, badge: "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground", glow: "bg-primary/25" },
+  assignee_changed: { icon: UserPlus, badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground", glow: "bg-accent/30" },
+  priority_changed: { icon: Flag, badge: "bg-gradient-to-br from-secondary to-secondary/70 text-secondary-foreground", glow: "bg-secondary/25" },
+  task_deleted: { icon: Trash2, badge: "bg-gradient-to-br from-destructive to-destructive/70 text-destructive-foreground", glow: "bg-destructive/25" },
+  comment_added: { icon: MessageSquare, badge: "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground", glow: "bg-primary/25" },
+  project_created: { icon: FolderPlus, badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground", glow: "bg-accent/30" },
+  project_updated: { icon: Pencil, badge: "bg-gradient-to-br from-secondary to-secondary/70 text-secondary-foreground", glow: "bg-secondary/25" },
+  project_deleted: { icon: FolderMinus, badge: "bg-gradient-to-br from-destructive to-destructive/70 text-destructive-foreground", glow: "bg-destructive/25" },
+  member_invited: { icon: UserPlus, badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground", glow: "bg-accent/30" },
+  member_joined: { icon: Users, badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground", glow: "bg-accent/30" },
+  member_removed: { icon: UserMinus, badge: "bg-gradient-to-br from-destructive to-destructive/70 text-destructive-foreground", glow: "bg-destructive/25" },
+  role_swapped: { icon: Shield, badge: "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground", glow: "bg-primary/25" },
+  member_status_changed: { icon: Users, badge: "bg-gradient-to-br from-secondary to-secondary/70 text-secondary-foreground", glow: "bg-secondary/25" },
+  ownership_transferred: { icon: Shield, badge: "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground", glow: "bg-primary/25" },
+  workspace_created: { icon: FolderPlus, badge: "bg-gradient-to-br from-accent to-accent/70 text-accent-foreground", glow: "bg-accent/30" },
+  workspace_updated: { icon: Pencil, badge: "bg-gradient-to-br from-secondary to-secondary/70 text-secondary-foreground", glow: "bg-secondary/25" },
 };
 
 const FALLBACK_META = {
@@ -145,38 +65,30 @@ function metaFor(type) {
   return META[type] || FALLBACK_META;
 }
 
+// These are the prefix phrases used before the detail string
 const ACTIONS = {
-  task_created: "created task",
+  task_created: "created",
   status_changed: "changed status on",
   assignee_changed: "reassigned",
-  priority_changed: "updated priority on",
-  task_deleted: "deleted task",
+  priority_changed: "changed priority on",
+  task_deleted: "deleted",
   comment_added: "commented on",
   project_created: "created project",
   project_updated: "updated project",
   project_deleted: "deleted project",
   member_invited: "invited",
-  member_joined: "joined",
+  member_joined: "added",
   member_removed: "removed",
   member_role_changed: "changed role of",
   member_status_changed: "updated status of",
-  ownership_transferred: "transferred ownership",
+  role_swapped: "changed admin to",
+  ownership_transferred: "transferred ownership to",
   workspace_created: "created workspace",
+  workspace_updated: "renamed workspace to",
 };
 
 function actionFor(type) {
   return ACTIONS[type] || String(type || "").replace(/_/g, " ");
-}
-
-function splitDetail(detail) {
-  const text = String(detail || "").trim();
-  if (!text) return { lead: "", target: "" };
-  const cleaned = text
-    .replace(/\bTASK-[A-Z0-9]+\b/g, "")
-    .replace(/\s{2,}/g, " ");
-  const m = cleaned.match(/^(#[0-9]+)\s+(.+)$/);
-  if (m) return { lead: m[1], target: m[2] };
-  return { lead: "", target: cleaned };
 }
 
 function groupByDay(items) {
@@ -200,13 +112,8 @@ function labelForDay(date) {
   const diffDays = Math.round((today - target) / (1000 * 60 * 60 * 24));
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Yesterday";
-  if (diffDays < 7)
-    return date.toLocaleDateString("en-US", { weekday: "long" });
-  return date.toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
+  if (diffDays < 7) return date.toLocaleDateString("en-US", { weekday: "long" });
+  return date.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
 function relativeTime(value) {
@@ -224,11 +131,7 @@ function relativeTime(value) {
   if (hr < 24) return `${hr} Hour${hr === 1 ? "" : "s"} Ago`;
   if (day === 1) return "Yesterday";
   if (day < 30) return `${day} Days Ago`;
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 const TYPE_OPTIONS = [
@@ -241,40 +144,26 @@ const TYPE_OPTIONS = [
   { value: "project_created", label: "Project created" },
   { value: "project_updated", label: "Project updated" },
   { value: "project_deleted", label: "Project deleted" },
+  { value: "member_invited", label: "Member invited" },
+  { value: "member_joined", label: "Member joined" },
+  { value: "member_removed", label: "Member removed" },
+  { value: "role_swapped", label: "Role changed" },
 ];
 
 const groupVariants = {
   hidden: { opacity: 0, y: 12 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: {
-      duration: 0.4,
-      ease: [0.22, 1, 0.36, 1],
-      staggerChildren: 0.045,
-      delayChildren: 0.08,
-    },
-  },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1], staggerChildren: 0.045, delayChildren: 0.08 } },
 };
 
 const cardVariants = {
   hidden: { opacity: 0, x: -10, scale: 0.99 },
-  visible: {
-    opacity: 1,
-    x: 0,
-    scale: 1,
-    transition: { type: "spring", stiffness: 340, damping: 26, mass: 0.6 },
-  },
+  visible: { opacity: 1, x: 0, scale: 1, transition: { type: "spring", stiffness: 340, damping: 26, mass: 0.6 } },
   exit: { opacity: 0, x: -6, transition: { duration: 0.18 } },
 };
 
 const dividerVariant = {
   hidden: { scaleX: 0, opacity: 0 },
-  visible: {
-    scaleX: 1,
-    opacity: 1,
-    transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
-  },
+  visible: { scaleX: 1, opacity: 1, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
 };
 
 export function ActivityPage({ role, title = "Activity", description }) {
@@ -299,7 +188,6 @@ export function ActivityPage({ role, title = "Activity", description }) {
     pageSize,
   });
 
-  // Live SSE handler — DO NOT toast here.
   const onLiveActivity = useCallback(
     (a) => {
       if (page !== 1) return;
@@ -324,30 +212,13 @@ export function ActivityPage({ role, title = "Activity", description }) {
     for (const a of liveNew) {
       if (!seen.has(a.id)) {
         seen.add(a.id);
-        out.push({
-          id: a.id,
-          type: a.type,
-          actorName: a.actorName || "Unknown",
-          detail: a.detail || "",
-          project: a.project || "",
-          resource: a.resource || "",
-          createdAt: a.createdAt,
-          _live: true,
-        });
+        out.push({ ...a, _live: true });
       }
     }
     for (const a of activities) {
       if (!seen.has(a.id)) {
         seen.add(a.id);
-        out.push({
-          id: a.id,
-          type: a.type,
-          actorName: a.actorName || "Unknown",
-          detail: a.detail || "",
-          project: a.project || "",
-          resource: a.resource || "",
-          createdAt: a.createdAt,
-        });
+        out.push(a);
       }
     }
     return out;
@@ -358,8 +229,8 @@ export function ActivityPage({ role, title = "Activity", description }) {
     const q = search.trim().toLowerCase();
     return combined.filter(
       (a) =>
-        a.actorName.toLowerCase().includes(q) ||
-        a.detail.toLowerCase().includes(q) ||
+        (a.actorName || "").toLowerCase().includes(q) ||
+        (a.detail || "").toLowerCase().includes(q) ||
         (a.project || "").toLowerCase().includes(q)
     );
   }, [combined, search]);
@@ -370,9 +241,7 @@ export function ActivityPage({ role, title = "Activity", description }) {
     <div className="space-y-6">
       <PageHeader
         title={title}
-        description={
-          description || "Every change in your workspace, chronologically."
-        }
+        description={description || "Every change in your workspace, chronologically."}
       />
 
       <motion.div
@@ -484,7 +353,6 @@ export function ActivityPage({ role, title = "Activity", description }) {
                       const meta = metaFor(a.type);
                       const Icon = meta.icon;
                       const action = actionFor(a.type);
-                      const { lead, target } = splitDetail(a.detail);
 
                       return (
                         <motion.div
@@ -542,7 +410,7 @@ export function ActivityPage({ role, title = "Activity", description }) {
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 text-[11px] text-muted-foreground mb-1.5">
                               <span className="font-medium">
-                                {a.actorName}
+                                {a.actorName || "System"}
                               </span>
                               <span className="opacity-50">·</span>
                               <motion.span
@@ -558,18 +426,10 @@ export function ActivityPage({ role, title = "Activity", description }) {
                               <span className="text-muted-foreground">
                                 {action}
                               </span>
-                              {lead && (
+                              {a.detail && (
                                 <>
                                   {" "}
-                                  <span className="font-semibold">
-                                    {lead}
-                                  </span>
-                                </>
-                              )}
-                              {target && (
-                                <>
-                                  {" "}
-                                  <span className="font-medium">{target}</span>
+                                  <span className="font-semibold">{a.detail}</span>
                                 </>
                               )}
                             </p>

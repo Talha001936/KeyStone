@@ -16,7 +16,7 @@ export async function POST(request) {
     return errors.badRequest("Invalid JSON body.");
   }
 
-  const { userId, email: rawEmail, workspaceId: inputWs } = body || {};
+  const { userId, name, email, workspaceId: inputWs } = body || {};
 
   let workspaceId;
   try {
@@ -33,8 +33,9 @@ export async function POST(request) {
     session,
     workspaceId,
     userId,
-    rawEmail,
-    role: ROLE,
+    name,
+    email,
+    rawEmail: email,
   });
   if (result.error) return result.error;
   return ok(result.body, { status: 201 });

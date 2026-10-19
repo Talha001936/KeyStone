@@ -38,12 +38,14 @@ export async function PATCH(request, ctx) {
   const roleRes = await requireRole(session.userId, task.workspaceId, [ROLE]);
   if (roleRes.error) return errors.forbidden();
 
+  // Pass _version from the body to the shared updateTask logic
   const result = await updateTask({
     session,
     task,
     updates: body,
     membershipRole: roleRes.membership.role,
   });
+
   if (result.error) return result.error;
   return ok({ task: result.task });
 }

@@ -1,9 +1,7 @@
-// components/shared/layout/ProtectedPage.jsx
 "use client";
 
 import { motion } from "framer-motion";
 import { useRequireRole } from "@/hooks/useRequireRole";
-import { NoWorkspaceState } from "@/components/shared/layout/NoWorkspaceState";
 import { LogoMark } from "@/components/brand/LogoMark";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, RefreshCw } from "lucide-react";
@@ -28,7 +26,7 @@ function PageError({ onRetry }) {
           <AlertCircle className="w-7 h-7 text-destructive" />
         </div>
         <div className="space-y-2">
-          <h1 className="text-2xl font-bold">Couldn't load your session</h1>
+          <h1 className="text-2xl font-bold">Couldn&apos;t load your session</h1>
           <p className="text-sm text-muted-foreground">
             There was a problem reaching the server. Please try again.
           </p>
@@ -43,22 +41,14 @@ function PageError({ onRetry }) {
 
 export function ProtectedPage({ role, children }) {
   const { refresh } = useAuth();
-  const {
-    ready,
-    loading,
-    isError,
-    isUnauthenticated,
-    noWorkspace,
-    roleMismatch,
-  } = useRequireRole(role);
+  const { ready, loading, isError, isUnauthenticated, roleMismatch } =
+    useRequireRole(role);
 
-  // Keep the loader up during resolution AND while a mismatch is queued.
   if (loading || isUnauthenticated || roleMismatch) {
     return <PageLoader label="Loading…" />;
   }
 
   if (isError) return <PageError onRetry={refresh} />;
-  if (noWorkspace) return <NoWorkspaceState />;
   if (!ready) return <PageLoader label="Redirecting…" />;
 
   return (

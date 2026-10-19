@@ -166,6 +166,8 @@ export function ProjectsPage({
       refresh();
     } catch (err) {
       toast.error(err?.message || "Failed to delete project");
+      setDeleting(false);
+      setDeleteTarget(null);
     } finally {
       setDeleting(false);
     }

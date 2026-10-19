@@ -20,6 +20,7 @@ import { StatCard } from "@/components/shared/ui/StatCard";
 import { ErrorState } from "@/components/shared/ui/ErrorState";
 import { EmptyState } from "@/components/shared/ui/EmptyState";
 import { PriorityBadge } from "@/components/shared/tasks/PriorityBadge";
+import { ConfirmDialog } from "@/components/shared/ui/ConfirmDialog";
 import { useProject } from "@/hooks/useProject";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
@@ -182,6 +183,9 @@ export function ProjectKanbanPage({ role, slug }) {
   const { user } = useAuth();
   const toast = useToast();
   const [activeTask, setActiveTask] = useState(null);
+  const [pendingMove, setPendingMove] = useState(null); // { task, newStatus }
+  const [moving, setMoving] = useState(false);
+  
   const canManage = role === "owner" || role === "admin";
 
   const anyDraggable = useMemo(
@@ -193,7 +197,7 @@ export function ProjectKanbanPage({ role, slug }) {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
 
-  /* Live SSE — refresh the board only. No toast for activity events. */
+  /* Live SSE */
   const refreshTimerRef = useRef(null);
   const scheduleRefresh = useCallback(() => {
     if (refreshTimerRef.current) return;
@@ -226,7 +230,7 @@ export function ProjectKanbanPage({ role, slug }) {
     ? Math.round((doneTasks / totalTasks) * 100)
     : 0;
 
-  async function handleDragEnd(event) {
+  function handleDragEnd(event) {
     const { active, over } = event;
     setActiveTask(null);
     if (!over) return;
@@ -234,13 +238,24 @@ export function ProjectKanbanPage({ role, slug }) {
     const taskId = active.id;
     const newStatus = over.id;
     const task = tasks.find((t) => t.id === taskId);
+    
     if (!task || task.status === newStatus) return;
     if (!TASK_STATUS[newStatus.toUpperCase()]) return;
+    
     if (!task.isMine) {
       toast.error("Only the assignee can change status");
       return;
     }
 
+    // Instead of doing the API call immediately, we store the action and open the dialog
+    setPendingMove({ task, newStatus });
+  }
+
+  const confirmMove = async () => {
+    if (!pendingMove) return;
+    const { task, newStatus } = pendingMove;
+    
+    setMoving(true);
     try {
       await api.patch(
         `/api/${role}/projects/${slug}/tasks/${task.displayNumber}`,
@@ -255,8 +270,11 @@ export function ProjectKanbanPage({ role, slug }) {
         toast.error(err.message || "Failed to update task");
       }
       refresh();
+    } finally {
+      setMoving(false);
+      setPendingMove(null);
     }
-  }
+  };
 
   if (loading) {
     return (
@@ -439,6 +457,22 @@ export function ProjectKanbanPage({ role, slug }) {
       )}
 
       {boardContent}
+
+      <ConfirmDialog
+        open={!!pendingMove}
+        onOpenChange={(open) => {
+          if (!open && !moving) setPendingMove(null);
+        }}
+        title="Change task status?"
+        description={
+          pendingMove
+            ? `Move "${pendingMove.task.title}" from ${STATUS_LABELS[pendingMove.task.status]} to ${STATUS_LABELS[pendingMove.newStatus]}?`
+            : ""
+        }
+        confirmLabel={moving ? "Moving…" : "Move task"}
+        loading={moving}
+        onConfirm={confirmMove}
+      />
     </div>
   );
 }

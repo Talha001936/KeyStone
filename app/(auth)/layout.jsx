@@ -13,7 +13,7 @@ import {
   UserPlus,
   LogIn,
 } from "lucide-react";
-
+import { LogoMark } from "@/components/brand/LogoMark";
 
 function AuthIllustration() {
   return (
@@ -25,13 +25,12 @@ function AuthIllustration() {
         transition={{ duration: 0.7, delay: 0.15 }}
         className="relative"
       >
-     
         <div className="relative bg-card border border-border rounded-2xl shadow-xl p-5">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-md bg-primary flex items-center justify-center">
                 <span className="text-primary-foreground text-[10px] font-bold">
-                  T
+                  K
                 </span>
               </div>
               <div>
@@ -80,7 +79,6 @@ function AuthIllustration() {
           </div>
         </div>
 
-      
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -115,9 +113,12 @@ function AuthIllustration() {
   );
 }
 
-
+/**
+ * Keys here are the *public* pathnames (no route group).
+ * The `(auth)` group does not appear in `usePathname()`.
+ */
 const pageContent = {
-  "/auth/login": {
+  "/login": {
     icon: LogIn,
     badge: "Welcome back",
     title: "Log in to your workspace",
@@ -129,19 +130,19 @@ const pageContent = {
       "Track progress across projects",
     ],
   },
-  "/auth/register": {
+  "/register": {
     icon: UserPlus,
     badge: "Get started",
-    title: "Create your free account",
+    title: "Create your workspace",
     description:
-      "Set up your account in under a minute. No credit card required — just your ideas.",
+      "Set up your account in under a minute. You'll be the Owner of a private workspace, ready for your team.",
     bullets: [
       "Free to use",
       "Unlimited projects & tasks",
-      "Invite-only workspaces",
+      "Invite your team",
     ],
   },
-  "/auth/forgot-password": {
+  "/forgot-password": {
     icon: Mail,
     badge: "Recovery",
     title: "Let's get you back in",
@@ -153,7 +154,7 @@ const pageContent = {
       "Check your spam folder",
     ],
   },
-  "/auth/reset-password": {
+  "/reset-password": {
     icon: Lock,
     badge: "New password",
     title: "Choose a new password",
@@ -165,28 +166,29 @@ const pageContent = {
       "Never reuse old passwords",
     ],
   },
-  "/auth/accept-invite": {
-    icon: UserPlus,
+  "/set-password": {
+    icon: Lock,
     badge: "You're invited",
-    title: "Join your workspace",
+    title: "Set up your access",
     description:
-      "You've been invited to collaborate. Set up your credentials and you're in.",
+      "Choose a password and you're in. Your team is waiting inside the workspace.",
     bullets: [
-      "One-click acceptance",
-      "Secure workspace access",
-      "Collaborate instantly",
+      "Secure account setup",
+      "Takes less than a minute",
+      "Join your team instantly",
     ],
   },
 };
 
+const FALLBACK = pageContent["/login"];
+
 export default function AuthLayout({ children }) {
   const pathname = usePathname();
-  const content = pageContent[pathname] || pageContent["/auth/login"];
+  const content = pageContent[pathname] || FALLBACK;
   const PageIcon = content.icon;
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-10 bg-background relative overflow-hidden">
-      {}
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10"
@@ -197,14 +199,12 @@ export default function AuthLayout({ children }) {
         <div className="absolute inset-0 bg-background/40" />
       </div>
 
-     
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className="relative w-full max-w-6xl rounded-[2rem] border border-border/70 bg-card/85 backdrop-blur-2xl shadow-[0_30px_90px_-30px_rgba(70,63,58,0.35)] overflow-hidden"
       >
-      
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 rounded-[2rem] ring-1 ring-inset ring-white/40"
@@ -213,32 +213,23 @@ export default function AuthLayout({ children }) {
         <div className="relative grid lg:grid-cols-2">
           {/* ===== LEFT: Brand panel ===== */}
           <div className="relative hidden lg:flex flex-col justify-between p-10 xl:p-12 bg-secondary/10 overflow-hidden border-r border-border/60">
-            {/* Background decorations inside panel */}
             <div className="absolute inset-0 pointer-events-none">
               <div className="absolute top-0 right-0 w-72 h-72 bg-accent/10 rounded-full blur-3xl" />
               <div className="absolute bottom-0 left-0 w-72 h-72 bg-secondary/20 rounded-full blur-3xl" />
             </div>
 
-            {/* Logo */}
-            <Link
-              href="/"
-              className="relative flex items-center gap-2.5 w-fit"
-            >
+            <Link href="/" className="relative flex items-center gap-2.5 w-fit">
               <motion.div
                 whileHover={{ rotate: -6, scale: 1.05 }}
                 transition={{ type: "spring", stiffness: 400, damping: 20 }}
-                className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-sm"
               >
-                <span className="text-primary-foreground font-bold text-2xl">
-                  T
-                </span>
+                <LogoMark size={40} />
               </motion.div>
               <span className="text-2xl font-bold tracking-tight">
-                TaskFlow
+                Keystone
               </span>
             </Link>
 
-            {/* Illustration + copy */}
             <div className="relative flex-1 flex flex-col items-center justify-center py-8">
               <AuthIllustration />
 
@@ -275,7 +266,6 @@ export default function AuthLayout({ children }) {
               </motion.div>
             </div>
 
-            {/* Trust badges */}
             <div className="relative flex items-center justify-center gap-5 text-xs text-muted-foreground">
               <div className="flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5 text-accent" /> Secure
@@ -292,18 +282,13 @@ export default function AuthLayout({ children }) {
           {/* ===== RIGHT: Form ===== */}
           <div className="relative flex items-center justify-center p-6 sm:p-10 lg:p-12">
             <div className="w-full max-w-md">
-              {/* Mobile-only logo */}
               <Link
                 href="/"
                 className="lg:hidden relative flex items-center gap-2.5 w-fit mb-8"
               >
-                <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-                  <span className="text-primary-foreground font-bold text-2xl">
-                    T
-                  </span>
-                </div>
+                <LogoMark size={40} />
                 <span className="text-2xl font-bold tracking-tight">
-                  TaskFlow
+                  Keystone
                 </span>
               </Link>
 

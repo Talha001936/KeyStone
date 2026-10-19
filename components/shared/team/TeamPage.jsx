@@ -3,6 +3,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ import {
   Trash2,
   Users,
   ArrowLeftRight,
+  Crown,
+  ShieldCheck,
 } from "lucide-react";
 
 function initials(name) {
@@ -46,7 +49,6 @@ function initials(name) {
 
 const ROLE_LABELS = { owner: "Owner", admin: "Admin", member: "Member" };
 
-/* Static grid classes so Tailwind can see every variant at build time. */
 const HEADER_ROW_CLASS =
   "hidden lg:grid grid-cols-[minmax(280px,2.5fr)_minmax(100px,1fr)_minmax(120px,1fr)_minmax(100px,1fr)_44px] items-center gap-6 px-5 py-2.5 border-b bg-muted/20 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground";
 
@@ -54,6 +56,7 @@ const DESKTOP_ROW_CLASS =
   "hidden lg:grid grid-cols-[minmax(280px,2.5fr)_minmax(100px,1fr)_minmax(120px,1fr)_minmax(100px,1fr)_44px] items-center gap-6 px-5 py-3";
 
 export function TeamPage({ role, subtitle }) {
+  const router = useRouter();
   const { members, currentUserId, loading, error, refresh } = useMembers(role);
   const { currentWorkspace } = useWorkspace();
   const { refresh: refreshAuth } = useAuth();
@@ -79,30 +82,59 @@ export function TeamPage({ role, subtitle }) {
     }
   };
 
-  const onSwapRole = (m) => {
-    if (callerRole === "owner") {
-      setConfirm({
-        member: m,
-        title: `Transfer ownership to ${m.name}?`,
-        description: `${m.name} will become the Owner, and you will become ${
-          m.rawRole === "admin" ? "an Admin" : "a Member"
-        }. You can swap back later only if they transfer ownership back to you.`,
-        confirmLabel: "Transfer ownership",
-        variant: "destructive",
-        onConfirm: () => {
-          const workspaceId = m.workspaceId || currentWorkspace?.id;
-          return runAction(
-            () =>
-              api.post("/api/owner/workspace/transfer", {
-                workspaceId,
-                toUserId: m.userId,
-              }),
-            "Ownership transferred"
-          );
-        },
-      });
-      return;
-    }
+  /* ---------- OWNER ACTIONS ---------- */
+
+  const ownerTransferOwnership = (m) => {
+    setConfirm({
+      member: m,
+      title: `Transfer ownership to ${m.name}?`,
+      description: `${m.name} will become the Owner, and you will become ${
+        m.rawRole === "admin" ? "an Admin" : "a Member"
+      }. You can swap back only if they transfer ownership back to you.`,
+      confirmLabel: "Transfer ownership",
+      variant: "destructive",
+      onConfirm: () => {
+        const workspaceId = m.workspaceId || currentWorkspace?.id;
+        return runAction(
+          () =>
+            api.post("/api/owner/workspace/transfer", {
+              workspaceId,
+              toUserId: m.userId,
+            }),
+          "Ownership transferred"
+        );
+      },
+    });
+  };
+
+  // Owner acts on ADMIN → go to change-admin page (list members).
+  const ownerChangeAdmin = () => {
+    router.push(`/${role}/team/change-admin`);
+  };
+
+  // Owner acts on MEMBER → direct swap (promote to admin).
+  const ownerPromoteMember = (m) => {
+    setConfirm({
+      member: m,
+      title: `Make ${m.name} the Admin?`,
+      description: `The current Admin will be demoted to Member, and ${m.name} will become the Admin.`,
+      confirmLabel: "Promote to Admin",
+      variant: "default",
+      onConfirm: () =>
+        runAction(
+          () =>
+            api.post("/api/owner/team/swap-admin", {
+              workspaceId: currentWorkspace?.id,
+              memberId: m.id,
+            }),
+          "Member promoted to Admin"
+        ),
+    });
+  };
+
+  /* ---------- ADMIN ACTIONS ---------- */
+
+  const adminPromoteMember = (m) => {
     setConfirm({
       member: m,
       title: `Promote ${m.name} to Admin?`,
@@ -116,6 +148,8 @@ export function TeamPage({ role, subtitle }) {
         ),
     });
   };
+
+  /* ---------- SHARED ---------- */
 
   const onToggleStatus = (m) => {
     const targetStatus = m.rawStatus === "active" ? "inactive" : "active";
@@ -151,6 +185,186 @@ export function TeamPage({ role, subtitle }) {
         ),
     });
   };
+
+  /* ---------- MENU BUILDERS ---------- */
+
+  function buildOwnerMenu(m) {
+    const isSelf = m.userId === currentUserId;
+    const isOwner = m.rawRole === "owner";
+    const isAdmin = m.rawRole === "admin";
+    const isMember = m.rawRole === "member";
+    const isActive = m.rawStatus === "active";
+
+    if (isSelf || isOwner) return null;
+
+    const canTransfer =
+      callerRole === "owner" && !isOwner && isActive;
+    const canChangeAdminHere =
+      callerRole === "owner" && isAdmin && isActive;
+    const canPromoteDirect =
+      callerRole === "owner" && isMember && isActive;
+    const canToggle = canManage && isActive ? true : !isActive;
+    const canRemove = canManage && !isOwner;
+
+    if (
+      !canTransfer &&
+      !canChangeAdminHere &&
+      !canPromoteDirect &&
+      !canRemove
+    )
+      return null;
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              aria-label="Open member actions"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-60">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+              {m.name.split(" ")[0]}
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+
+          {canTransfer && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => ownerTransferOwnership(m)}>
+                  <Crown className="w-4 h-4 mr-2" /> Transfer ownership
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </>
+          )}
+
+          {canChangeAdminHere && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={ownerChangeAdmin}>
+                  <ShieldCheck className="w-4 h-4 mr-2" /> Change admin
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </>
+          )}
+
+          {canPromoteDirect && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => ownerPromoteMember(m)}>
+                  <ArrowLeftRight className="w-4 h-4 mr-2" /> Promote to Admin
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </>
+          )}
+
+          <DropdownMenuSeparator />
+          <DropdownMenuGroup>
+            <DropdownMenuItem onClick={() => onToggleStatus(m)}>
+              {m.rawStatus === "active" ? (
+                <>
+                  <UserX className="w-4 h-4 mr-2" /> Deactivate
+                </>
+              ) : (
+                <>
+                  <UserCheck className="w-4 h-4 mr-2" /> Activate
+                </>
+              )}
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
+
+          {canRemove && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => onRemove(m)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Remove
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  function buildAdminMenu(m) {
+    const isSelf = m.userId === currentUserId;
+    const isOwner = m.rawRole === "owner";
+    const isMember = m.rawRole === "member";
+    const isActive = m.rawStatus === "active";
+
+    if (isSelf || isOwner) return null;
+
+    const canPromote = callerRole === "admin" && isMember && isActive;
+    const canRemove = callerRole === "admin" && !isOwner && !isSelf;
+
+    if (!canPromote && !canRemove) return null;
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-foreground"
+              aria-label="Open member actions"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+              {m.name.split(" ")[0]}
+            </DropdownMenuLabel>
+          </DropdownMenuGroup>
+
+          {canPromote && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => adminPromoteMember(m)}>
+                  <ArrowLeftRight className="w-4 h-4 mr-2" /> Promote to Admin
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </>
+          )}
+
+          {canRemove && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={() => onRemove(m)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" /> Remove
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  const buildMenu = callerRole === "owner" ? buildOwnerMenu : buildAdminMenu;
 
   return (
     <div className="space-y-5">
@@ -192,7 +406,6 @@ export function TeamPage({ role, subtitle }) {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          {/* Desktop header */}
           <div className={HEADER_ROW_CLASS}>
             <span>Member</span>
             <span>Role</span>
@@ -206,24 +419,9 @@ export function TeamPage({ role, subtitle }) {
               {members.map((m, i) => {
                 const isOwner = m.rawRole === "owner";
                 const isAdmin = m.rawRole === "admin";
-                const isMemberRole = m.rawRole === "member";
                 const isSelf = m.userId === currentUserId;
                 const isActive = m.rawStatus === "active";
-
-                const canSwapRole =
-                  (callerRole === "owner" &&
-                    !isSelf &&
-                    !isOwner &&
-                    isActive) ||
-                  (callerRole === "admin" &&
-                    isMemberRole &&
-                    !isSelf &&
-                    isActive);
-                const canToggleStatus = canManage && !isSelf && !isOwner;
-                const canRemove = canManage && !isSelf && !isOwner;
-
-                const hasAnyAction =
-                  canSwapRole || canToggleStatus || canRemove;
+                const menu = buildMenu(m);
 
                 return (
                   <motion.div
@@ -237,7 +435,6 @@ export function TeamPage({ role, subtitle }) {
                     }}
                     className="hover:bg-muted/30 transition-colors"
                   >
-                    {/* Desktop row */}
                     <div className={DESKTOP_ROW_CLASS}>
                       <div className="flex items-center gap-3 min-w-0">
                         <Avatar className="h-9 w-9 shrink-0">
@@ -273,83 +470,7 @@ export function TeamPage({ role, subtitle }) {
                       <StatusDot active={isActive} />
 
                       <div className="flex justify-end">
-                        {hasAnyAction ? (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                  aria-label="Open member actions"
-                                >
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                              }
-                            />
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuGroup>
-                                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                                  {m.name.split(" ")[0]}
-                                </DropdownMenuLabel>
-                              </DropdownMenuGroup>
-
-                              {canSwapRole && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuGroup>
-                                    <DropdownMenuItem
-                                      onClick={() => onSwapRole(m)}
-                                    >
-                                      <ArrowLeftRight className="w-4 h-4 mr-2" />
-                                      {callerRole === "owner"
-                                        ? "Transfer ownership"
-                                        : "Promote to Admin"}
-                                    </DropdownMenuItem>
-                                  </DropdownMenuGroup>
-                                </>
-                              )}
-
-                              {canToggleStatus && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuGroup>
-                                    <DropdownMenuItem
-                                      onClick={() => onToggleStatus(m)}
-                                    >
-                                      {isActive ? (
-                                        <>
-                                          <UserX className="w-4 h-4 mr-2" />
-                                          Deactivate
-                                        </>
-                                      ) : (
-                                        <>
-                                          <UserCheck className="w-4 h-4 mr-2" />
-                                          Activate
-                                        </>
-                                      )}
-                                    </DropdownMenuItem>
-                                  </DropdownMenuGroup>
-                                </>
-                              )}
-
-                              {canRemove && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuGroup>
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onClick={() => onRemove(m)}
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Remove
-                                    </DropdownMenuItem>
-                                  </DropdownMenuGroup>
-                                </>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        ) : (
+                        {menu || (
                           <span className="text-[11px] text-muted-foreground italic">
                             {isSelf ? "You" : "—"}
                           </span>
@@ -385,84 +506,7 @@ export function TeamPage({ role, subtitle }) {
                           isAdmin={isAdmin}
                           label={ROLE_LABELS[m.rawRole] || m.rawRole}
                         />
-
-                        {hasAnyAction && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger
-                              render={
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 text-muted-foreground"
-                                  aria-label="Open member actions"
-                                >
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                              }
-                            />
-                            <DropdownMenuContent align="end" className="w-56">
-                              <DropdownMenuGroup>
-                                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
-                                  {m.name.split(" ")[0]}
-                                </DropdownMenuLabel>
-                              </DropdownMenuGroup>
-
-                              {canSwapRole && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuGroup>
-                                    <DropdownMenuItem
-                                      onClick={() => onSwapRole(m)}
-                                    >
-                                      <ArrowLeftRight className="w-4 h-4 mr-2" />
-                                      {callerRole === "owner"
-                                        ? "Transfer ownership"
-                                        : "Promote to Admin"}
-                                    </DropdownMenuItem>
-                                  </DropdownMenuGroup>
-                                </>
-                              )}
-
-                              {canToggleStatus && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuGroup>
-                                    <DropdownMenuItem
-                                      onClick={() => onToggleStatus(m)}
-                                    >
-                                      {isActive ? (
-                                        <>
-                                          <UserX className="w-4 h-4 mr-2" />
-                                          Deactivate
-                                        </>
-                                      ) : (
-                                        <>
-                                          <UserCheck className="w-4 h-4 mr-2" />
-                                          Activate
-                                        </>
-                                      )}
-                                    </DropdownMenuItem>
-                                  </DropdownMenuGroup>
-                                </>
-                              )}
-
-                              {canRemove && (
-                                <>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuGroup>
-                                    <DropdownMenuItem
-                                      variant="destructive"
-                                      onClick={() => onRemove(m)}
-                                    >
-                                      <Trash2 className="w-4 h-4 mr-2" />
-                                      Remove
-                                    </DropdownMenuItem>
-                                  </DropdownMenuGroup>
-                                </>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
+                        {menu}
                       </div>
                     </div>
                   </motion.div>

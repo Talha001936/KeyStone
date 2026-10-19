@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ConfirmDialog } from "@/components/shared/ui/ConfirmDialog";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { api } from "@/lib/api";
 import {
@@ -42,8 +41,7 @@ const ROLE_LABELS = { owner: "Owner", admin: "Admin", member: "Member" };
 export function WorkspaceSettingsPage({ role = "owner" }) {
   const router = useRouter();
   const toast = useToast();
-  const { currentWorkspace } = useWorkspace();
-  const { refresh: refreshAuth } = useAuth();
+  const { currentWorkspace, refreshWorkspace } = useWorkspace();
 
   const [name, setName] = useState(currentWorkspace?.name || "");
   const [saving, setSaving] = useState(false);
@@ -113,7 +111,7 @@ export function WorkspaceSettingsPage({ role = "owner" }) {
       await api.patch(`/api/owner/workspace/${currentWorkspace.id}`, {
         name: name.trim(),
       });
-      await refreshAuth();
+      await refreshWorkspace(); // This updates the name AND the slug
       toast.success("Workspace updated");
     } catch (err) {
       toast.error(err?.message || "Failed to save");
@@ -126,7 +124,7 @@ export function WorkspaceSettingsPage({ role = "owner" }) {
     setDeleting(true);
     try {
       await api.delete(`/api/owner/workspace/${currentWorkspace.id}`);
-      await refreshAuth();
+      await refreshWorkspace();
       toast.success("Workspace deleted");
       router.push("/");
       router.refresh();

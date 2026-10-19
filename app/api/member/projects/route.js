@@ -25,7 +25,14 @@ export async function GET(request) {
   if (roleRes.error) return errors.forbidden();
 
   const { page, pageSize, offset } = parsePagination(searchParams);
-  const result = await listProjects({ workspaceId, page, pageSize, offset });
+  const result = await listProjects({
+    workspaceId,
+    page,
+    pageSize,
+    offset,
+    role: ROLE,
+    memberId: session.userId,
+  });
 
   return ok({ ...result, page, pageSize });
 }

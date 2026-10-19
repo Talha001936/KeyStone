@@ -1,17 +1,8 @@
 // app/api/owner/workspace/transfer/route.js
-//
-// Owner transfers ownership to another active member of the workspace.
-// Roles are SWAPPED:
-//   - Target becomes 'owner'
-//   - Caller becomes the target's previous role ('admin' or 'member')
-//
-// Exactly one user holds 'owner' before and after. No other workspace
-// is affected because every query is scoped by workspace_id.
-
 import { requireSession } from "@/lib/auth";
 import { errors, ok } from "@/lib/http";
 import { transaction } from "@/lib/db";
-import { logActivity } from "@/lib/handlers";
+import { logActivity, getUserName } from "@/lib/handlers";
 
 export async function POST(request) {
   const { session, error } = await requireSession();
@@ -34,7 +25,6 @@ export async function POST(request) {
 
   try {
     const result = await transaction(async (client) => {
-      // Lock both memberships so concurrent transfers can't race.
       const lock = await client.query(
         `SELECT m.id, m.user_id AS "userId", m.role, m.status
            FROM memberships m
@@ -47,51 +37,24 @@ export async function POST(request) {
       const caller = lock.rows.find((r) => r.userId === session.userId);
       const target = lock.rows.find((r) => r.userId === toUserId);
 
-      if (!caller || caller.status !== "active") {
-        throw Object.assign(new Error("not-member"), { __code: "NOT_MEMBER" });
-      }
-      if (caller.role !== "owner") {
-        throw Object.assign(new Error("not-owner"), { __code: "NOT_OWNER" });
-      }
-      if (!target || target.status !== "active") {
-        throw Object.assign(new Error("bad-target"), {
-          __code: "BAD_TARGET",
-        });
-      }
-      if (target.role === "owner") {
-        throw Object.assign(new Error("already-owner"), {
-          __code: "ALREADY_OWNER",
-        });
-      }
+      if (!caller || caller.status !== "active") throw Object.assign(new Error("not-member"), { __code: "NOT_MEMBER" });
+      if (caller.role !== "owner") throw Object.assign(new Error("not-owner"), { __code: "NOT_OWNER" });
+      if (!target || target.status !== "active") throw Object.assign(new Error("bad-target"), { __code: "BAD_TARGET" });
+      if (target.role === "owner") throw Object.assign(new Error("already-owner"), { __code: "ALREADY_OWNER" });
 
       const previousTargetRole = target.role; // 'admin' | 'member'
+      const targetName = await getUserName(toUserId, client);
 
-      // ---- SWAP ----
-      // 1. Target becomes owner.
-      await client.query(
-        `UPDATE memberships SET role = 'owner' WHERE id = $1`,
-        [target.id]
-      );
+      await client.query(`UPDATE memberships SET role = 'owner' WHERE id = $1`, [target.id]);
+      await client.query(`UPDATE memberships SET role = $2 WHERE id = $1`, [caller.id, previousTargetRole]);
+      await client.query(`UPDATE workspaces SET owner_id = $1 WHERE id = $2`, [toUserId, workspaceId]);
 
-      // 2. Caller steps into the target's previous role.
-      await client.query(
-        `UPDATE memberships SET role = $2 WHERE id = $1`,
-        [caller.id, previousTargetRole]
-      );
-
-      // 3. Sync workspace.owner_id.
-      await client.query(
-        `UPDATE workspaces SET owner_id = $1 WHERE id = $2`,
-        [toUserId, workspaceId]
-      );
-
-      // 4. Log.
       await logActivity({
         client,
         workspaceId,
         actorId: session.userId,
         type: "ownership_transferred",
-        detail: `transferred ownership to ${toUserId}`,
+        detail: `${targetName}`,
         from: "owner",
         to: previousTargetRole,
       });
@@ -103,14 +66,8 @@ export async function POST(request) {
   } catch (err) {
     if (err.__code === "NOT_MEMBER") return errors.forbidden();
     if (err.__code === "NOT_OWNER") return errors.forbidden();
-    if (err.__code === "BAD_TARGET") {
-      return errors.badRequest(
-        "Target must be an active member of this workspace."
-      );
-    }
-    if (err.__code === "ALREADY_OWNER") {
-      return errors.badRequest("Target is already the owner.");
-    }
+    if (err.__code === "BAD_TARGET") return errors.badRequest("Target must be an active member of this workspace.");
+    if (err.__code === "ALREADY_OWNER") return errors.badRequest("Target is already the owner.");
     console.error("[/api/owner/workspace/transfer]", err);
     return errors.server("Failed to transfer ownership.");
   }
